@@ -36,23 +36,23 @@ jobs:
       - name: Compilar APK final
         run: |
           buildozer android debug || true
-          echo "=== CREANDO LICENCIAS A LA FUERZA ==="
-          mkdir -p $HOME/.buildozer/android/platform/android-sdk/licenses
+          echo "=== USANDO EL SDK DE GITHUB, NO EL DE BUILDOZER ==="
+          echo $ANDROID_HOME
+          ls $ANDROID_HOME/cmdline-tools/
           mkdir -p $ANDROID_HOME/licenses
-          echo "8933bad161af4178b1185d1a37fbf41ea5269c55" > $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-          echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-          echo "24333f8a63b6825ea9c5514f83c1059b8ea84e4b" >> $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
           echo "8933bad161af4178b1185d1a37fbf41ea5269c55" > $ANDROID_HOME/licenses/android-sdk-license
           echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> $ANDROID_HOME/licenses/android-sdk-license
           echo "24333f8a63b6825ea9c5514f83c1059b8ea84e4b" >> $ANDROID_HOME/licenses/android-sdk-license
-          echo "y" > $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
           echo "y" > $ANDROID_HOME/licenses/android-sdk-preview-license
-          ls $HOME/.buildozer/android/platform/android-sdk/licenses/
-          echo "=== INSTALANDO BUILD-TOOLS 37.0.0 ==="
-          $HOME/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/.buildozer/android/platform/android-sdk "build-tools;37.0.0" "build-tools;33.0.2" || true
-          $HOME/.buildozer/android/platform/android-sdk/cmdline-tools/bin/sdkmanager --sdk_root=$HOME/.buildozer/android/platform/android-sdk "build-tools;37.0.0" "build-tools;33.0.2" || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;37.0.0" "build-tools;33.0.2" "platforms;android-33"
+          ls $ANDROID_HOME/build-tools/
+          echo "=== COPIANDO BUILD-TOOLS 37 A LA CARPETA DE BUILDOZER ==="
+          mkdir -p $HOME/.buildozer/android/platform/android-sdk/build-tools/
+          cp -r $ANDROID_HOME/build-tools/37.0.0 $HOME/.buildozer/android/platform/android-sdk/build-tools/ || true
+          cp -r $ANDROID_HOME/build-tools/33.0.2 $HOME/.buildozer/android/platform/android-sdk/build-tools/ || true
           ls $HOME/.buildozer/android/platform/android-sdk/build-tools/
-          echo "=== COMPILANDO DE VERDAD ==="
+          ls $HOME/.buildozer/android/platform/android-sdk/build-tools/37.0.0/
+          echo "=== AHORA SI COMPILANDO ==="
           buildozer android debug
 
       - name: Subir APK
