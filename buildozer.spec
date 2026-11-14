@@ -1,8 +1,4 @@
-- name: Limpiar cache
-  run: rm -rf .buildozer
-- name: Compilar APK final
-  run: buildozer android debug
-  [app]
+ [app]
 title = Imagen Tracer SI ESPEJO
 package.name = imagentracer
 package.domain = com.siespejo.tracer
