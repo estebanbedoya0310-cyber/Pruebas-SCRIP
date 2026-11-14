@@ -34,11 +34,21 @@ jobs:
         run: rm -rf .buildozer
           
       
-      - name: Compilar APK final
+            - name: Compilar APK final
         run: |
           buildozer android debug || true
-          yes | $HOME/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
-          yes | $HOME/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager "build-tools;37.0.0" "build-tools;33.0.2" || true
+          echo "=== BUSCANDO SDK ==="
+          find $HOME/.buildozer -name sdkmanager 2>/dev/null || true
+          ls -la $HOME/.buildozer/android/platform/android-sdk/cmdline-tools/ || true
+          echo "=== ACEPTANDO LICENCIAS EN LOS 2 SDKs ==="
+          yes | $HOME/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/.buildozer/android/platform/android-sdk --licenses || true
+          yes | $HOME/.buildozer/android/platform/android-sdk/cmdline-tools/bin/sdkmanager --sdk_root=$HOME/.buildozer/android/platform/android-sdk --licenses || true
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          echo "=== INSTALANDO BUILD-TOOLS 37 y 33 ==="
+          $HOME/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/.buildozer/android/platform/android-sdk "build-tools;37.0.0" "build-tools;33.0.2" || true
+          $HOME/.buildozer/android/platform/android-sdk/cmdline-tools/bin/sdkmanager --sdk_root=$HOME/.buildozer/android/platform/android-sdk "build-tools;37.0.0" "build-tools;33.0.2" || true
+          ls $HOME/.buildozer/android/platform/android-sdk/build-tools/ || true
+          echo "=== SEGUNDO INTENTO DE COMPILAR ==="
           buildozer android debug
           
       - name: Subir APK
