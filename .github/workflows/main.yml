@@ -2,26 +2,45 @@ name: Compilar APK Android
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ main ]
 
 jobs:
   build:
-  
-    runs-on: ubuntu-latest
-    
+    runs-on: ubuntu-22.04
+
     steps:
-    - name: Clonar Repositorio
-      uses: actions/checkout@v4
+      - name: Clonar Repositorio
+        uses: actions/checkout@v4
 
-    - name: Configurar Entorno de Compilación Buildozer
-      uses: ArtemSBulgakov/buildozer-action@v1
-      id: buildozer
-      with:
-        command: buildozer -v android debug
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-    - name: Subir el APK Generado
-      uses: actions/upload-artifact@v4
-      with:
-        name: package
-        path: bin/*.apk
-        
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Instalar dependencias
+        run: |
+          sudo apt update
+          sudo apt install -y python3-pip zip unzip openjdk-17-jdk libffi-dev libssl-dev libbz2-dev libsqlite3-dev
+          pip install --upgrade pip
+          pip install buildozer cython==0.29.33
+
+      - name: Configurar Entorno de Compilación Buildozer
+        run: |
+          yes | buildozer init || true
+          ls -la
+
+      - name: Compilar APK
+        run: |
+          buildozer -v android debug
+
+      - name: Subir el APK Generado
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImageTrace-APK
+          path: bin/*.apk
