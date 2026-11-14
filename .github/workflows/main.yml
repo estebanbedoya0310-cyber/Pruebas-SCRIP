@@ -32,7 +32,9 @@ jobs:
 
       - name: Limpiar cache viejo
         run: rm -rf .buildozer
-
+      - name: Aceptar licencias Android
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
       - name: Compilar APK final
         run: buildozer android debug
 
