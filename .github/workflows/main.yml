@@ -26,7 +26,7 @@ jobs:
       - name: Instalar Dependencias
         run: |
           sudo apt update
-          sudo apt install -y python3-pip libffi-dev libssl-dev libbz2-dev libsqlite3-dev libncurses5-dev libgdbm-dev libnss3-dev libreadline-dev libtk8.6-dev tk-dev libxml2-dev libxmlsec1-dev liblzma-dev zlib1g-dev libjpeg8-dev libfreetype6-dev libgl1-mesa-dev
+          sudo apt install -y zip unzip git openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev cmake libffi-dev libssl-dev libltdl-dev
           pip install --upgrade pip
           pip install "Cython==0.29.33" buildozer
 
