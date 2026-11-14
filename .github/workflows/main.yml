@@ -12,45 +12,44 @@ jobs:
       - name: Clonar Repositorio
         uses: actions/checkout@v4
 
-      - name: Configurar Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
       - name: Configurar Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Instalar dependencias
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Instalar Dependencias
         run: |
           sudo apt update
-          sudo apt install -y python3-pip libffi-dev libssl-dev libbz2-dev libsqlite3-dev
+          sudo apt install -y python3-pip libffi-dev libssl-dev libbz2-dev libsqlite3-dev libncurses5-dev libgdbm-dev libnss3-dev libreadline-dev libtk8.6-dev tk-dev libxml2-dev libxmlsec1-dev liblzma-dev zlib1g-dev libjpeg8-dev libfreetype6-dev libgl1-mesa-dev
           pip install --upgrade pip
           pip install "Cython==0.29.33" buildozer
 
       - name: Limpiar cache viejo
         run: rm -rf .buildozer
-          
-      
-            - name: Compilar APK final
+
+      - name: Compilar APK final
         run: |
           buildozer android debug || true
           echo "=== BUSCANDO SDK ==="
           find $HOME/.buildozer -name sdkmanager 2>/dev/null || true
           ls -la $HOME/.buildozer/android/platform/android-sdk/cmdline-tools/ || true
-          echo "=== ACEPTANDO LICENCIAS EN LOS 2 SDKs ==="
+          echo "=== ACEPTANDO LICENCIAS ==="
           yes | $HOME/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/.buildozer/android/platform/android-sdk --licenses || true
           yes | $HOME/.buildozer/android/platform/android-sdk/cmdline-tools/bin/sdkmanager --sdk_root=$HOME/.buildozer/android/platform/android-sdk --licenses || true
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-          echo "=== INSTALANDO BUILD-TOOLS 37 y 33 ==="
+          echo "=== INSTALANDO BUILD-TOOLS ==="
           $HOME/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/.buildozer/android/platform/android-sdk "build-tools;37.0.0" "build-tools;33.0.2" || true
           $HOME/.buildozer/android/platform/android-sdk/cmdline-tools/bin/sdkmanager --sdk_root=$HOME/.buildozer/android/platform/android-sdk "build-tools;37.0.0" "build-tools;33.0.2" || true
           ls $HOME/.buildozer/android/platform/android-sdk/build-tools/ || true
-          echo "=== SEGUNDO INTENTO DE COMPILAR ==="
+          echo "=== COMPILANDO DE VERDAD ==="
           buildozer android debug
-          
+
       - name: Subir APK
         uses: actions/upload-artifact@v4
         with:
