@@ -32,12 +32,15 @@ jobs:
 
       - name: Limpiar cache viejo
         run: rm -rf .buildozer
-      - name: Aceptar licencias Android
-        run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          
+      
       - name: Compilar APK final
-        run: buildozer android debug
-
+        run: |
+          buildozer android debug || true
+          yes | $HOME/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          yes | $HOME/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager "build-tools;37.0.0" "build-tools;33.0.2" || true
+          buildozer android debug
+          
       - name: Subir APK
         uses: actions/upload-artifact@v4
         with:
