@@ -14,6 +14,7 @@ log_level = 2
 [app:android]
 android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,CAMERA
 android.api = 33
-android.minapi = 24
+android.build_tools = 33.0.2
+android.minapi = 21
 android.archs = arm64-v8a
 android.accept_sdk_license_agreements = True
