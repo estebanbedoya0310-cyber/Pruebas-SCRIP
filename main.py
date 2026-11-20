@@ -1,243 +1,343 @@
+import hashlib
+import json
 import os
+from datetime import datetime
+
 from kivy.app import App
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.label import Label
-from kivy.uix.button import Button
-from kivy.uix.textinput import TextInput
-from kivy.uix.popup import Popup
-from kivy.uix.filechooser import FileChooserListView
-from kivy.uix.scrollview import ScrollView
 from kivy.core.window import Window
+from kivy.metrics import dp
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
+from kivy.uix.filechooser import FileChooserListView
+from kivy.uix.label import Label
+from kivy.uix.popup import Popup
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.textinput import TextInput
 from kivy.utils import platform
 
-import imagentrace as core
+from PIL import Image
 
-Window.clearcolor = (0.08, 0.10, 0.13, 1)
+try:
+    RESAMPLE = Image.Resampling.LANCZOS
+except AttributeError:
+    RESAMPLE = Image.LANCZOS
 
-if platform == "android":
-    try:
-        from android.permissions import Permission, request_permissions
-        request_permissions([
-            Permission.READ_EXTERNAL_STORAGE,
-            Permission.WRITE_EXTERNAL_STORAGE,
-        ])
-    except Exception:
-        pass
+UMBRAL_TOLERANCIA = 15
+
+CARPETAS = [
+    ("Descargas", "/sdcard/Download"),
+    ("Camara", "/sdcard/DCIM/Camera"),
+    ("WhatsApp", "/sdcard/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images"),
+    ("Pictures", "/sdcard/Pictures"),
+]
 
 
-class ImagenTracerAPK(App):
+# ---------------- Logica de hashes ----------------
+def calcular_sha256(ruta):
+    sha = hashlib.sha256()
+    with open(ruta, "rb") as f:
+        for bloc in iter(lambda: f.read(4096), b""):
+            sha.update(bloc)
+    return sha.hexdigest()
+
+
+def calcular_dhash(ruta, hash_size=8):
+    with Image.open(ruta) as img:
+        gris = img.convert("L").resize((hash_size + 1, hash_size), RESAMPLE)
+        pixels = list(gris.getdata())
+    valor = 0
+    bit = 0
+    for row in range(hash_size):
+        inicio = row * (hash_size + 1)
+        for col in range(hash_size):
+            if pixels[inicio + col] > pixels[inicio + col + 1]:
+                valor |= 1 << bit
+            bit += 1
+    return f"{valor:016x}"
+
+
+def distancia_hamming(h1, h2):
+    return bin(int(h1, 16) ^ int(h2, 16)).count("1")
+
+
+# ---------------- Interfaz ----------------
+class ImagenTracerApp(App):
+    title = "Imagen Tracer | SI.ESPEJO"
+
     def build(self):
-        self.title = "Imagen Tracer | SI.ESPEJO"
-        self.ruta_img = ""
+        Window.clearcolor = (0.08, 0.09, 0.11, 1)
+        root = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(8))
 
-        root = BoxLayout(orientation="vertical", padding=15, spacing=10)
-
-        header = Label(
-            text="[b]IMAGEN TRACER | SI.ESPEJO[/b]\n[size=13sp][color=88aaff]Custodia y Auditoría Forense[/color][/size]",
-            markup=True,
-            size_hint=(1, 0.13),
+        root.add_widget(
+            Label(
+                text="IMAGEN TRACER | SI.ESPEJO",
+                size_hint_y=None,
+                height=dp(40),
+                bold=True,
+                font_size="18sp",
+            )
         )
-        root.add_widget(header)
 
-        tabs = BoxLayout(size_hint=(1, 0.10), spacing=6)
-        b1 = Button(text="Proteger", background_color=(0.15, 0.45, 0.85, 1), bold=True)
-        b2 = Button(text="Auditar", background_color=(0.80, 0.25, 0.25, 1), bold=True)
-        b3 = Button(text="Bitácora", background_color=(0.25, 0.55, 0.35, 1), bold=True)
+        for texto, fn in [
+            ("1. Proteger imagen antes de enviar", self.accion_proteger),
+            ("2. Auditar imagen (detectar anomalias)", self.accion_auditar),
+            ("3. Ver bitacora de custodia", self.accion_bitacora),
+        ]:
+            b = Button(text=texto, size_hint_y=None, height=dp(52))
+            b.bind(on_release=lambda _, f=fn: f())
+            root.add_widget(b)
 
-        b1.bind(on_release=lambda x: self.vista_proteger())
-        b2.bind(on_release=lambda x: self.vista_auditar())
-        b3.bind(on_release=lambda x: self.vista_bitacora())
-
-        tabs.add_widget(b1)
-        tabs.add_widget(b2)
-        tabs.add_widget(b3)
-        root.add_widget(tabs)
-
-        self.panel = BoxLayout(orientation="vertical", size_hint=(1, 0.77), spacing=8)
-        root.add_widget(self.panel)
-
-        self.vista_proteger()
+        scroll = ScrollView()
+        self.salida = Label(
+            text="Listo.",
+            size_hint_y=None,
+            halign="left",
+            valign="top",
+            markup=False,
+        )
+        self.salida.bind(
+            width=lambda i, w: setattr(i, "text_size", (w, None)),
+            texture_size=lambda i, s: setattr(i, "height", s[1]),
+        )
+        scroll.add_widget(self.salida)
+        root.add_widget(scroll)
         return root
 
-    def elegir_imagen(self, on_done):
-        box = BoxLayout(orientation="vertical", spacing=8, padding=8)
-        inicio = "/sdcard/Download" if os.path.exists("/sdcard/Download") else os.path.expanduser("~")
-        fc = FileChooserListView(
-            path=inicio,
-            filters=["*.jpg", "*.jpeg", "*.png", "*.JPG", "*.JPEG", "*.PNG"],
-        )
-        box.add_widget(fc)
+    def on_start(self):
+        if platform == "android":
+            try:
+                from android.permissions import Permission, request_permissions
 
-        btns = BoxLayout(size_hint=(1, 0.13), spacing=8)
-        btn_cancel = Button(text="Cancelar")
-        btn_ok = Button(text="Seleccionar", background_color=(0.15, 0.65, 0.35, 1), bold=True)
-        btns.add_widget(btn_cancel)
-        btns.add_widget(btn_ok)
-        box.add_widget(btns)
+                perms = [
+                    Permission.READ_EXTERNAL_STORAGE,
+                    Permission.WRITE_EXTERNAL_STORAGE,
+                ]
+                for nombre in ("READ_MEDIA_IMAGES",):
+                    if hasattr(Permission, nombre):
+                        perms.append(getattr(Permission, nombre))
+                    else:
+                        perms.append("android.permission." + nombre)
+                request_permissions(perms)
+            except Exception as e:
+                self.mostrar(f"[-] No se pudieron pedir permisos: {e}")
 
-        pop = Popup(title="Seleccionar Imagen", content=box, size_hint=(0.95, 0.90))
-        btn_cancel.bind(on_release=pop.dismiss)
+    # ---------- utilidades ----------
+    def mostrar(self, texto):
+        self.salida.text = texto
 
-        def confirmar(inst):
-            if fc.selection:
-                on_done(fc.selection[0])
-                pop.dismiss()
+    def ruta_log(self):
+        return os.path.join(self.user_data_dir, "imagentrace_log.json")
 
-        btn_ok.bind(on_release=confirmar)
-        pop.open()
+    def cargar_registros(self):
+        ruta = self.ruta_log()
+        if os.path.exists(ruta):
+            try:
+                with open(ruta, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return data if isinstance(data, list) else []
+            except Exception:
+                return []
+        return []
 
-    def vista_proteger(self):
-        self.panel.clear_widgets()
-        self.ruta_img = ""
+    def guardar_registro(self, reg):
+        registros = self.cargar_registros()
+        registros.append(reg)
+        with open(self.ruta_log(), "w", encoding="utf-8") as f:
+            json.dump(registros, f, indent=4, ensure_ascii=False)
 
-        self.lbl_sel_p = Label(text="Sin imagen seleccionada", size_hint=(1, 0.09))
-        btn_sel = Button(text="Elegir Imagen", size_hint=(1, 0.12))
-        btn_sel.bind(on_release=lambda x: self.elegir_imagen(self._set_p))
+    # ---------- selector de imagen ----------
+    def seleccionar_imagen(self, callback):
+        inicio = next((r for _, r in CARPETAS if os.path.exists(r)), self.user_data_dir)
+        filtros = ["*.jpg", "*.jpeg", "*.png", "*.JPG", "*.JPEG", "*.PNG"]
+        chooser = FileChooserListView(path=inicio, filters=filtros)
 
-        self.txt_dest = TextInput(hint_text="Destinatario autorizado", multiline=False, size_hint=(1, 0.11))
-        self.txt_ubic = TextInput(hint_text="Ubicación o coordenadas", multiline=False, size_hint=(1, 0.11))
-
-        btn_save = Button(
-            text="CUSTODIAR IMAGEN",
-            size_hint=(1, 0.13),
-            background_color=(0.15, 0.65, 0.35, 1),
-            bold=True,
-        )
-        btn_save.bind(on_release=self._guardar_custodia)
-
-        self.lbl_res_p = Label(text="", markup=True, size_hint=(1, 0.44), valign="top")
-        self.lbl_res_p.bind(size=self.lbl_res_p.setter("text_size"))
-
-        for w in [self.lbl_sel_p, btn_sel, self.txt_dest, self.txt_ubic, btn_save, self.lbl_res_p]:
-            self.panel.add_widget(w)
-
-    def _set_p(self, ruta):
-        self.ruta_img = ruta
-        self.lbl_sel_p.text = f"Archivo: {os.path.basename(ruta)}"
-
-    def _guardar_custodia(self, inst):
-        if not self.ruta_img or not os.path.exists(self.ruta_img):
-            self.lbl_res_p.text = "[color=ff5555]Selecciona una imagen válida.[/color]"
-            return
-        dest = self.txt_dest.text.strip()
-        if not dest:
-            self.lbl_res_p.text = "[color=ff5555]Ingresa el destinatario.[/color]"
-            return
-        ubic = self.txt_ubic.text.strip() or "No especificada"
-
-        try:
-            sha_val = core.calcular_sha256(self.ruta_img)
-            dhash_val = core.calcular_dhash(self.ruta_img)
-            core.guardar_registro({
-                "fecha": core.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "archivo_original": os.path.basename(self.ruta_img),
-                "destinatario": dest,
-                "ubicacion_envio": ubic,
-                "sha256": sha_val,
-                "dhash": dhash_val,
-            })
-            self.lbl_res_p.text = (
-                f"[color=55ff77]Custodiada con éxito[/color]\n"
-                f"Destinatario: {dest}\n"
-                f"dHash: {dhash_val}\n"
-                f"Log: {core.obtener_ruta_log()}"
+        contenido = BoxLayout(orientation="vertical", spacing=dp(6))
+        fila = BoxLayout(size_hint_y=None, height=dp(42), spacing=dp(4))
+        for nombre, ruta in CARPETAS:
+            b = Button(text=nombre, font_size="12sp")
+            b.bind(
+                on_release=lambda _, r=ruta: setattr(chooser, "path", r)
+                if os.path.exists(r)
+                else None
             )
-            self.txt_dest.text = ""
-            self.txt_ubic.text = ""
-        except Exception as e:
-            self.lbl_res_p.text = f"[color=ff5555]Error: {e}[/color]"
+            fila.add_widget(b)
+        contenido.add_widget(fila)
+        contenido.add_widget(chooser)
 
-    def vista_auditar(self):
-        self.panel.clear_widgets()
-        self.ruta_img = ""
+        botones = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(6))
+        b_cancel = Button(text="Cancelar")
+        b_ok = Button(text="Elegir")
+        botones.add_widget(b_cancel)
+        botones.add_widget(b_ok)
+        contenido.add_widget(botones)
 
-        self.lbl_sel_a = Label(text="Sin imagen dubitada seleccionada", size_hint=(1, 0.09))
-        btn_sel = Button(text="Elegir Imagen a Auditar", size_hint=(1, 0.12))
-        btn_sel.bind(on_release=lambda x: self.elegir_imagen(self._set_a))
+        popup = Popup(title="Selecciona una imagen", content=contenido, size_hint=(0.95, 0.9))
 
-        btn_run = Button(
-            text="AUDITAR IMAGEN",
-            size_hint=(1, 0.13),
-            background_color=(0.85, 0.30, 0.20, 1),
-            bold=True,
-        )
-        btn_run.bind(on_release=self._correr_auditoria)
+        def elegir(_):
+            if chooser.selection:
+                ruta = chooser.selection[0]
+                popup.dismiss()
+                callback(ruta)
 
-        scroll = ScrollView(size_hint=(1, 0.66))
-        self.lbl_res_a = Label(text="Listo para auditar.", markup=True, size_hint_y=None, valign="top")
-        self.lbl_res_a.bind(texture_size=self.lbl_res_a.setter("size"))
-        self.lbl_res_a.bind(size=self.lbl_res_a.setter("text_size"))
-        scroll.add_widget(self.lbl_res_a)
+        b_ok.bind(on_release=elegir)
+        b_cancel.bind(on_release=lambda _: popup.dismiss())
+        popup.open()
 
-        for w in [self.lbl_sel_a, btn_sel, btn_run, scroll]:
-            self.panel.add_widget(w)
+    # ---------- 1. Proteger ----------
+    def accion_proteger(self):
+        self.seleccionar_imagen(self.pedir_datos_proteccion)
 
-    def _set_a(self, ruta):
-        self.ruta_img = ruta
-        self.lbl_sel_a.text = f"Dubitada: {os.path.basename(ruta)}"
+    def pedir_datos_proteccion(self, ruta):
+        contenido = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(8))
+        t_dest = TextInput(hint_text="Destinatario autorizado", multiline=False, size_hint_y=None, height=dp(44))
+        t_ubic = TextInput(hint_text="Coordenadas o direccion de envio", multiline=False, size_hint_y=None, height=dp(44))
+        contenido.add_widget(Label(text=os.path.basename(ruta), size_hint_y=None, height=dp(30)))
+        contenido.add_widget(t_dest)
+        contenido.add_widget(t_ubic)
+        botones = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(6))
+        b_cancel = Button(text="Cancelar")
+        b_ok = Button(text="Registrar")
+        botones.add_widget(b_cancel)
+        botones.add_widget(b_ok)
+        contenido.add_widget(botones)
 
-    def _correr_auditoria(self, inst):
-        if not self.ruta_img or not os.path.exists(self.ruta_img):
-            self.lbl_res_a.text = "[color=ff5555]Selecciona una imagen.[/color]"
+        popup = Popup(title="Datos de custodia", content=contenido, size_hint=(0.92, 0.55))
+
+        def registrar(_):
+            dest = t_dest.text.strip()
+            if not dest:
+                t_dest.hint_text = "El destinatario es obligatorio"
+                return
+            ubic = t_ubic.text.strip() or "No especificada"
+            popup.dismiss()
+            try:
+                sha = calcular_sha256(ruta)
+                dh = calcular_dhash(ruta)
+                self.guardar_registro(
+                    {
+                        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "archivo_original": os.path.basename(ruta),
+                        "destinatario": dest,
+                        "ubicacion_envio": ubic,
+                        "sha256": sha,
+                        "dhash": dh,
+                    }
+                )
+                self.mostrar(
+                    "IMAGEN REGISTRADA Y CUSTODIADA\n\n"
+                    f"Destinatario: {dest}\nUbicacion: {ubic}\n"
+                    f"dHash: {dh}\nBitacora: {self.ruta_log()}"
+                )
+            except Exception as e:
+                self.mostrar(f"[-] Error protegiendo imagen: {e}")
+
+        b_ok.bind(on_release=registrar)
+        b_cancel.bind(on_release=lambda _: popup.dismiss())
+        popup.open()
+
+    # ---------- 2. Auditar ----------
+    def accion_auditar(self):
+        if not self.cargar_registros():
+            self.mostrar("[-] La bitacora esta vacia. Registra imagenes primero en la opcion 1.")
             return
-        regs = core.cargar_registros()
-        if not regs:
-            self.lbl_res_a.text = "[color=ffaa33]Bitácora vacía.[/color]"
-            return
+        self.seleccionar_imagen(self.auditar)
 
+    def auditar(self, ruta):
         try:
-            sha_act = core.calcular_sha256(self.ruta_img)
-            dhash_act = core.calcular_dhash(self.ruta_img)
-            mejor = None
-            menor_dist = 999
-
-            for r in regs:
-                h = r.get("dhash") or r.get("phash")
+            sha_actual = calcular_sha256(ruta)
+            dh_actual = calcular_dhash(ruta)
+            mejor, menor = None, 999
+            for reg in self.cargar_registros():
+                h = reg.get("dhash")
                 if not h:
                     continue
-                d = core.distancia_hamming(dhash_act, h)
-                if d < menor_dist:
-                    menor_dist = d
-                    mejor = r
+                d = distancia_hamming(dh_actual, h)
+                if d < menor:
+                    menor, mejor = d, reg
 
-            umbral = 15
-            if mejor is not None and menor_dist <= umbral:
-                sim = max(0, int(100 - (menor_dist / 64.0) * 100))
-                core.exportar_reporte_txt(mejor, self.ruta_img, sha_act, menor_dist, sim)
-                self.lbl_res_a.text = (
-                    f"[color=ff4444][b]COINCIDENCIA DETECTADA[/b][/color]\n"
-                    f"Destinatario: {mejor['destinatario']}\n"
-                    f"Ubicación: {mejor.get('ubicacion_envio', 'N/A')}\n"
-                    f"Fecha: {mejor['fecha']}\n"
-                    f"Similitud: {sim}% (Distancia: {menor_dist})"
+            if mejor is not None and menor <= UMBRAL_TOLERANCIA:
+                sim = max(0, int(100 - (menor / 64.0) * 100))
+                texto = (
+                    "ANOMALIA DETECTADA: REENVIO NO AUTORIZADO\n"
+                    "----------------------------------------\n"
+                    f"Destinatario original: {mejor['destinatario']}\n"
+                    f"Ubicacion de envio: {mejor.get('ubicacion_envio', 'No registrada')}\n"
+                    f"Fecha de registro: {mejor['fecha']}\n"
+                    f"Archivo original: {mejor['archivo_original']}\n"
+                    f"Similitud visual: {sim}% (distancia dHash: {menor})\n"
                 )
+                texto += "\n" + self.exportar_reporte(mejor, ruta, sha_actual, menor, sim)
             else:
-                self.lbl_res_a.text = (
-                    f"[color=55ff77][b]SIN COINCIDENCIAS[/b][/color]\n"
-                    f"Menor distancia: {menor_dist} bits (Umbral: {umbral})"
+                texto = (
+                    "SIN ANOMALIAS DETECTADAS\n"
+                    "----------------------------------------\n"
+                    f"Menor distancia hallada: {menor} bits (umbral max: {UMBRAL_TOLERANCIA})\n"
+                    "No se encontraron coincidencias con copias registradas."
                 )
+            self.mostrar(texto)
         except Exception as e:
-            self.lbl_res_a.text = f"[color=ff5555]Error: {e}[/color]"
+            self.mostrar(f"[-] Error en la auditoria: {e}")
 
-    def vista_bitacora(self):
-        self.panel.clear_widgets()
-        regs = core.cargar_registros()
-        lbl_t = Label(text=f"BITÁCORA ({len(regs)} registros)", size_hint=(1, 0.10))
-        scroll = ScrollView(size_hint=(1, 0.90))
+    def exportar_reporte(self, reg, ruta_dub, sha_dub, distancia, similitud):
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        nombre = f"Informe_Forense_Anomalia_{ts}.txt"
+        contenido = f"""==================================================
+        INFORME TECNICO DE AUDITORIA FORENSE
+               IMAGEN TRACER | SI.ESPEJO
+==================================================
+Fecha y hora de auditoria: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+Estado del dictamen: ANOMALIA DETECTADA (REENVIO NO AUTORIZADO)
 
-        txt = "\n".join(
-            f"{i}. {r.get('destinatario')} | {r.get('archivo_original')} | {r.get('fecha')}"
-            for i, r in enumerate(reversed(regs), 1)
-        ) or "Sin registros."
+1. EVIDENCIA ORIGINAL (CUSTODIADA)
+- Destinatario autorizado: {reg['destinatario']}
+- Ubicacion de envio: {reg.get('ubicacion_envio', 'No registrada')}
+- Fecha de registro: {reg['fecha']}
+- Archivo original: {reg['archivo_original']}
+- SHA-256 original: {reg['sha256']}
 
-        lbl_l = Label(text=txt, size_hint_y=None, valign="top")
-        lbl_l.bind(texture_size=lbl_l.setter("size"))
-        lbl_l.bind(size=lbl_l.setter("text_size"))
-        scroll.add_widget(lbl_l)
+2. IMAGEN DUBITADA (INTERCEPTADA)
+- Ruta analizada: {ruta_dub}
+- SHA-256 actual: {sha_dub}
 
-        self.panel.add_widget(lbl_t)
-        self.panel.add_widget(scroll)
+3. METRICAS DE CORRELACION PERCEPTUAL
+- Algoritmo: dHash
+- Distancia de Hamming: {distancia} bits
+- Similitud visual: {similitud}%
+
+4. CONCLUSION TECNICA
+La imagen analizada guarda correspondencia estructural directa
+con la copia digital entregada al destinatario indicado,
+superando los umbrales de tolerancia ante compresion de redes sociales.
+==================================================
+"""
+        for carpeta in ("/sdcard/Download", self.user_data_dir):
+            try:
+                if not os.path.isdir(carpeta):
+                    continue
+                destino = os.path.join(carpeta, nombre)
+                with open(destino, "w", encoding="utf-8") as f:
+                    f.write(contenido)
+                return f"Informe exportado en:\n{destino}"
+            except Exception:
+                continue
+        return "[-] No se pudo exportar el informe."
+
+    # ---------- 3. Bitacora ----------
+    def accion_bitacora(self):
+        registros = self.cargar_registros()
+        if not registros:
+            self.mostrar("No hay registros guardados todavia.")
+            return
+        partes = [f"BITACORA ({len(registros)} registros)\n{self.ruta_log()}\n"]
+        for i, r in enumerate(registros, 1):
+            partes.append(
+                f"{i}. Destinatario: {r['destinatario']}\n"
+                f"   Ubicacion: {r.get('ubicacion_envio', 'N/A')}\n"
+                f"   Fecha: {r['fecha']}\n"
+                f"   Archivo: {r['archivo_original']}\n"
+            )
+        self.mostrar("\n".join(partes))
 
 
 if __name__ == "__main__":
-    ImagenTracerAPK().run()
+    ImagenTracerApp().run()
