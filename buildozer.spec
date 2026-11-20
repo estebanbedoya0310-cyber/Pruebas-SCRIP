@@ -1,20 +1,19 @@
- [app]
-title = Imagen Tracer SI ESPEJO
-package.name = imagentracer
-package.domain = com.siespejo.tracer
+[app]
+title = Imagen Tracer SI.ESPEJO
+package.name = imagentracesiespejo
+package.domain = org.siespejo
 source.dir = .
-source.include_exts = py,png,jpg,kv,atlas
-version = 1.1
-requirements = python3,kivy,Pillow
+source.include_exts = py,png,jpg,jpeg,json,txt
+entrypoint = main.py
+version = 1.0
+requirements = python3,kivy,pillow
 orientation = portrait
+fullscreen = 0
+android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE
+android.api = 33
+android.minapi = 21
+android.archs = arm64-v8a
 
 [buildozer]
 log_level = 2
-
-[app:android]
-android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,CAMERA
-android.api = 33
-android.build_tools = 33.0.2
-android.minapi = 21
-android.archs = arm64-v8a
-android.accept_sdk_license_agreements = True
+warn_on_root = 1
