@@ -1,40 +1,19 @@
-name: Build APK
+[app]
+title = Imagen Tracer SI.ESPEJO
+package.name = imagentracesiespejo
+package.domain = org.siespejo
+source.dir = .
+source.include_exts = py,png,jpg,jpeg,json,txt
+entrypoint = main.py
+version = 1.0
+requirements = python3,kivy,pillow
+orientation = portrait
+fullscreen = 0
+android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE
+android.api = 33
+android.minapi = 21
+android.archs = arm64-v8a
 
-on:
-  push:
-    branches: [ "main" ]
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install system dependencies for Buildozer
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            git zip unzip openjdk-17-jdk autoconf libtool pkg-config \
-            zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake \
-            libffi-dev libssl-dev
-
-      - name: Install Buildozer and Cython
-        run: |
-          pip install --upgrade pip
-          pip install buildozer cython==0.29.36
-
-      - name: Build APK with Buildozer
-        run: buildozer android debug
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: ImagenTracer-APK
-          path: bin/*.apk
+[buildozer]
+log_level = 2
+warn_on_root = 1
