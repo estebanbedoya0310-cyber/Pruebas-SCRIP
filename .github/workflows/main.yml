@@ -31,7 +31,23 @@ jobs:
           pip install buildozer cython==0.29.36
 
       - name: Build APK with Buildozer
-        run: buildozer android debug
+        run: |
+          set -o pipefail
+          buildozer android debug 2>&1 | tee build.log
+
+      - name: Mostrar causa del error
+        if: failure()
+        run: |
+          N=$(grep -n "Buildozer failed to execute" build.log | tail -1 | cut -d: -f1)
+          echo "===== LINEAS PREVIAS AL FALLO ====="
+          sed -n "$((N-150)),$((N-1))p" build.log | grep -v -E "^# +[A-Za-z_]+ = " | tail -n 60
+
+      - name: Guardar log completo
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
